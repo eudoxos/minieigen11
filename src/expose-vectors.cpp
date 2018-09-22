@@ -21,4 +21,22 @@ void expose_vectors(py::module& mod){
 	py::class_<Vector2i> cV2i(mod,"Vector2i","2-dimensional integer vector.\n\nSupported operations (``i`` if an int, ``v`` is a Vector2i): ``-v``, ``v+v``, ``v+=v``, ``v-v``, ``v-=v``, ``v*i``, ``i*v``, ``v*=i``, ``v==v``, ``v!=v``.\n\nImplicit conversion from sequence (list, tuple, ...) of 2 integers.\n\nStatic attributes: ``Zero``, ``Ones``, ``UnitX``, ``UnitY``.");
 	VectorVisitor<Vector2i>::visit(cV2i);
 
+
+	// this relies on conversions defined in casters.hpp
+	py::implicitly_convertible<py::tuple,VectorXr>();
+	py::implicitly_convertible<py::tuple,Vector6r>();
+	py::implicitly_convertible<py::tuple,Vector6i>();
+	py::implicitly_convertible<py::tuple,Vector3r>();
+	py::implicitly_convertible<py::tuple,Vector3i>();
+	py::implicitly_convertible<py::tuple,Vector2r>();
+	py::implicitly_convertible<py::tuple,Vector2i>();
+	py::implicitly_convertible<py::sequence,VectorXr>();
+	py::implicitly_convertible<py::sequence,Vector6r>();
+	py::implicitly_convertible<py::sequence,Vector6i>();
+	py::implicitly_convertible<py::sequence,Vector3r>();
+	py::implicitly_convertible<py::sequence,Vector3i>();
+	py::implicitly_convertible<py::sequence,Vector2r>();
+	py::implicitly_convertible<py::sequence,Vector2i>();
+
+
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include<iostream>
 #include"common.hpp"
 /*** automatic conversions from non-eigen types (sequences) ***/
 
@@ -8,15 +9,25 @@
 */
 
 template<typename T>
-bool pySeqItemCheck(PyObject* o, int i){ return py::isinstance<T>(PySequence_GetItem(o,i)); }
+bool pySeqItemCheck(PyObject* o, int i){
+	try{ py::cast<T>(PySequence_GetItem(o,i)); return true; } catch(...){ return false; }
+#if 0
+	return py::isinstance<T>(PySequence_GetItem(o,i));
+#endif
+}
 
 template<typename T>
 T pySeqItemExtract(PyObject* o, int i){ return py::cast<T>(PySequence_GetItem(o,i)); }
 
+
 template<class VT>
 bool VectorT_load_from_sequence(py::handle src, VT& value){
+	if(!PySequence_Check(src.ptr())){ std::cerr<<"VectorT_load_from_sequence: rejecting non-sequence."<<std::endl;  return false; }
 	size_t len=PySequence_Size(src.ptr());
-	for(size_t i=0; i<len; i++) if(!pySeqItemCheck<typename VT::Scalar>(src.ptr(),i)) return false;
+	for(size_t i=0; i<len; i++) if(!pySeqItemCheck<typename VT::Scalar>(src.ptr(),i)){
+		std::cerr<<"VectorT_load_from_sequence: rejecting sequence of size "<<len<<std::endl;
+		return false;
+	}
 	if(VT::RowsAtCompileTime!=Eigen::Dynamic){ len=VT::RowsAtCompileTime; }
 	else{ len=PySequence_Size(src.ptr()); value.resize(len); }
 	for(size_t i=0; i<len; i++) value[i]=pySeqItemExtract<typename VT::Scalar>(src.ptr(),i);
@@ -24,7 +35,7 @@ bool VectorT_load_from_sequence(py::handle src, VT& value){
 };
 
 template<class MT>
-bool MatrixT_loat_from_sequences(py::handle src, MT& mx){
+bool MatrixT_load_from_sequences(py::handle src, MT& mx){
 	if(!PySequence_Check(src.ptr())) return false;
 	int sz=PySequence_Size(src.ptr());
 	if(sz<1) return false; // 0-length sequence: fails

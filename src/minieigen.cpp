@@ -25,9 +25,7 @@ PYBIND11_MODULE(_minieigen11,mod){
 	expose_quaternion(mod);
 	expose_boxes(mod);
 	expose_matrices(mod); // must come after vectors
-#if 0
 	expose_complex(mod);
-#endif
 
 	mod.def("float2str",&doubleToShortest,py::arg("f"),py::arg("pad")=0,"Return the shortest string representation of *f* which will is equal to *f* when converted back to float. This function is only useful in Python prior to 3.0; starting from that version, standard string conversion does just that.");
 };

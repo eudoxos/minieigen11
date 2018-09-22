@@ -67,6 +67,7 @@ using std::string;
 
 #include<pybind11/pybind11.h>
 #include<pybind11/operators.h>
+#include<pybind11/complex.h>
 namespace py=pybind11;
 
 /**** double-conversion helpers *****/

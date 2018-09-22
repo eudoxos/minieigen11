@@ -3,6 +3,9 @@
 #include <boost/type_traits/is_arithmetic.hpp>
 #include <boost/type_traits/is_pointer.hpp>
 
+// temporary, for helper routines
+#include"casters-funcs.hpp"
+
 #include<iostream>
 
 #include"common.hpp"
@@ -20,12 +23,12 @@ class MatrixBaseVisitor{
 		.def(py::init<>())
 		.def(py::init<MatrixBaseT>(),py::arg("other"))
 		.def("__neg__",&MatrixBaseVisitor::__neg__)
-		.def("__add__",&MatrixBaseVisitor::__add__).def("__iadd__",&MatrixBaseVisitor::__iadd__)
-		.def("__sub__",&MatrixBaseVisitor::__sub__).def("__isub__",&MatrixBaseVisitor::__isub__)
-		.def("__eq__",&MatrixBaseVisitor::__eq__).def("__ne__",&MatrixBaseVisitor::__ne__)
-		.def("__mul__",&MatrixBaseVisitor::__mul__scalar<long>)
-		.def("__imul__",&MatrixBaseVisitor::__imul__scalar<long>)
-		.def("__rmul__",&MatrixBaseVisitor::__rmul__scalar<long>)
+		.def("__add__",&MatrixBaseVisitor::__add__,py::is_operator()).def("__iadd__",&MatrixBaseVisitor::__iadd__,py::is_operator())
+		.def("__sub__",&MatrixBaseVisitor::__sub__,py::is_operator()).def("__isub__",&MatrixBaseVisitor::__isub__,py::is_operator())
+		.def("__eq__",&MatrixBaseVisitor::__eq__,py::is_operator()).def("__ne__",&MatrixBaseVisitor::__ne__,py::is_operator())
+		.def("__mul__",&MatrixBaseVisitor::__mul__scalar<long>,py::is_operator())
+		.def("__imul__",&MatrixBaseVisitor::__imul__scalar<long>,py::is_operator())
+		.def("__rmul__",&MatrixBaseVisitor::__rmul__scalar<long>,py::is_operator())
 		.def("isApprox",&MatrixBaseVisitor::isApprox,py::arg("other"),py::arg("prec")=Eigen::NumTraits<Scalar>::dummy_precision(),"Approximate comparison with precision *prec*.")
 		.def("rows",&MatrixBaseT::rows,"Number of rows.")
 		.def("cols",&MatrixBaseT::cols,"Number of columns.")
@@ -66,17 +69,17 @@ class MatrixBaseVisitor{
 		// operations with other scalars (Scalar is the floating type, long is the python integer type)
 		// __trudiv__ is for py3k
 		cl
-		.def("__mul__",&MatrixBaseVisitor::__mul__scalar<Scalar>)
-		.def("__rmul__",&MatrixBaseVisitor::__rmul__scalar<Scalar>)
-		.def("__imul__",&MatrixBaseVisitor::__imul__scalar<Scalar>)
-		.def("__div__",&MatrixBaseVisitor::__div__scalar<long>)
-		.def("__truediv__",&MatrixBaseVisitor::__div__scalar<long>)
-		.def("__idiv__",&MatrixBaseVisitor::__idiv__scalar<long>)
-		.def("__itruediv__",&MatrixBaseVisitor::__div__scalar<long>)
-		.def("__div__",&MatrixBaseVisitor::__div__scalar<Scalar>)
-		.def("__truediv__",&MatrixBaseVisitor::__div__scalar<Scalar>)
-		.def("__idiv__",&MatrixBaseVisitor::__idiv__scalar<Scalar>)
-		.def("__itruediv__",&MatrixBaseVisitor::__idiv__scalar<Scalar>)
+		.def("__mul__",&MatrixBaseVisitor::__mul__scalar<Scalar>,py::is_operator())
+		.def("__rmul__",&MatrixBaseVisitor::__rmul__scalar<Scalar>,py::is_operator())
+		.def("__imul__",&MatrixBaseVisitor::__imul__scalar<Scalar>,py::is_operator())
+		.def("__div__",&MatrixBaseVisitor::__div__scalar<long>,py::is_operator())
+		.def("__truediv__",&MatrixBaseVisitor::__div__scalar<long>,py::is_operator())
+		.def("__idiv__",&MatrixBaseVisitor::__idiv__scalar<long>,py::is_operator())
+		.def("__itruediv__",&MatrixBaseVisitor::__div__scalar<long>,py::is_operator())
+		.def("__div__",&MatrixBaseVisitor::__div__scalar<Scalar>,py::is_operator())
+		.def("__truediv__",&MatrixBaseVisitor::__div__scalar<Scalar>,py::is_operator())
+		.def("__idiv__",&MatrixBaseVisitor::__idiv__scalar<Scalar>,py::is_operator())
+		.def("__itruediv__",&MatrixBaseVisitor::__idiv__scalar<Scalar>,py::is_operator())
 		//
 		.def("norm",&MatrixBaseT::norm,"Euclidean norm.")
 		.def("__abs__",&MatrixBaseT::norm)
@@ -149,6 +152,7 @@ class VectorVisitor {
 	static void visit(PyClass& cl) {
 		MatrixBaseVisitor<VectorT>().visit(cl);
 		cl
+		.def(py::init(&VectorVisitor::from_tuple))
 		.def("__getstate__",&VectorVisitor::__getstate__) // XXX: __setstate__
 		.def("__setitem__",&VectorVisitor::set_item)
 		.def("__getitem__",&VectorVisitor::get_item)
@@ -162,6 +166,20 @@ class VectorVisitor {
 
 		visit_special_sizes<VectorT,PyClass>(cl);
 	};
+	static VectorT from_tuple(py::tuple src){
+		int len=py::len(src);
+		if(VectorT::RowsAtCompileTime!=Eigen::Dynamic){
+			if(len!=VectorT::RowsAtCompileTime) throw py::type_error("Wrong tuple size "+std::to_string(len)+" (should be "+std::to_string(VectorT::RowsAtCompileTime)+")");
+		}
+		for(size_t i=0; i<len; i++) if(!pySeqItemCheck<typename VectorT::Scalar>(src.ptr(),i)){
+			throw py::type_error(std::to_string(i)+"-th tuple element not convertible to required number type.");
+		}
+		VectorT ret;
+		if(VectorT::RowsAtCompileTime==Eigen::Dynamic) ret.resize(py::len(src));
+		for(size_t i=0; i<len; i++) ret[i]=pySeqItemExtract<typename VectorT::Scalar>(src.ptr(),i);
+		return ret;
+	};
+
 	private:
 	// for dynamic vectors
 	template<typename VectorT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
@@ -325,9 +343,9 @@ class MatrixVisitor{
 		.def("row",&MatrixVisitor::row,py::arg("row"),"Return row as vector.")
 		.def("col",&MatrixVisitor::col,py::arg("col"),"Return column as vector.")
 		// matrix*matrix product
-		.def("__mul__",&MatrixVisitor::__mul__).def("__imul__",&MatrixVisitor::__imul__)
+		.def("__mul__",&MatrixVisitor::__mul__,py::is_operator()).def("__imul__",&MatrixVisitor::__imul__,py::is_operator())
 		// matrix*vector product
-		.def("__mul__",&MatrixVisitor::__mul__vec).def("__rmul__",&MatrixVisitor::__mul__vec)
+		.def("__mul__",&MatrixVisitor::__mul__vec,py::is_operator()).def("__rmul__",&MatrixVisitor::__mul__vec,py::is_operator())
 		.def("__setitem__",&MatrixVisitor::set_row).def("__getitem__",&MatrixVisitor::get_row)
 		.def("__setitem__",&MatrixVisitor::set_item).def("__getitem__",&MatrixVisitor::get_item)
 		.def("__str__",&MatrixVisitor::__str__).def("__repr__",&MatrixVisitor::__str__)
@@ -537,6 +555,8 @@ class AabbVisitor{
 	template <class PyClass>
 	static void visit(PyClass& cl) {
 		cl
+		.def(py::init<>())
+		.def(py::init(&AabbVisitor::from_tuple))
 		.def(py::init<Box>(),py::arg("other"))
 		.def(py::init<VectorType,VectorType>(),py::arg("min"),py::arg("max"))
 		.def("__getstate__",[](const Box& b){ return py::make_tuple(b.min(),b.max()); })
@@ -568,6 +588,11 @@ class AabbVisitor{
 		.def("__str__",&AabbVisitor::__str__).def("__repr__",&AabbVisitor::__str__)
 		;
 	};
+
+	static Box from_tuple(py::tuple t){
+		if(py::len(t)!=2) throw py::type_error("Can only be constructed from a 2-tuple (not "+std::to_string(py::len(t))+"-tuple).");
+		return Box(py::cast<VectorType>(t[0]),py::cast<VectorType>(t[1]));
+	}
 	private:
 	static bool containsPt(const Box& self, const VectorType& pt){ return self.contains(pt); }
 	static bool containsBox(const Box& self, const Box& other){ return self.contains(other); }
@@ -608,6 +633,7 @@ class QuaternionVisitor{
 	template<class PyClass>
 	static void visit(PyClass& cl) {
 		cl
+		.def(py::init(&QuaternionVisitor::from_tuple))
 		.def(py::init<>(&QuaternionVisitor::fromAxisAngle),py::arg("axis"),py::arg("angle"))
 		.def(py::init<>(&QuaternionVisitor::fromAngleAxis),py::arg("angle"),py::arg("axis"))
 		.def(py::init<>(&QuaternionVisitor::fromTwoVectors),py::arg("u"),py::arg("v"))
@@ -636,14 +662,21 @@ class QuaternionVisitor{
 		.def(py::self * py::self)
 		.def(py::self *= py::self)
 		.def(py::self * CompatVec3())
-		.def("__eq__",&QuaternionVisitor::__eq__).def("__ne__",&QuaternionVisitor::__ne__)
-		.def("__sub__",&QuaternionVisitor::__sub__) 
+		.def("__eq__",&QuaternionVisitor::__eq__,py::is_operator()).def("__ne__",&QuaternionVisitor::__ne__,py::is_operator())
+		.def("__sub__",&QuaternionVisitor::__sub__,py::is_operator())
 		// specials
 		.def("__abs__",&QuaternionT::norm)
 		.def_static("__len__",&QuaternionVisitor::__len__)
 		.def("__setitem__",&QuaternionVisitor::__setitem__).def("__getitem__",&QuaternionVisitor::__getitem__)
 		.def("__str__",&QuaternionVisitor::__str__).def("__repr__",&QuaternionVisitor::__str__)
 		;
+	}
+	static QuaternionT* from_tuple(py::tuple t){
+		std::cerr<<"ATTEMPTING CONSTRUCTION of QUATERNION from TUPLE."<<std::endl;
+		if(py::len(t)!=2) throw py::type_error("Can only be constructed from a 2-tuple (not "+std::to_string(py::len(t))+"-tuple)");
+		try{ return fromAngleAxis(py::cast<Scalar>(t[0]),py::cast<CompatVec3>(t[1])); } catch(...) {};
+		try{ return fromAngleAxis(py::cast<Scalar>(t[1]),py::cast<CompatVec3>(t[0])); } catch(...) {};
+		py::type_error("Tuple convertible to Quaternion must be (3-vector,scalar) or (scalar,3-vector).");
 	}
 	private:
 	static QuaternionT* fromAxisAngle(const CompatVec3& axis, const Scalar& angle){ QuaternionT* ret=new QuaternionT(AngleAxisT(angle,axis)); ret->normalize();  return ret; }
