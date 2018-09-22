@@ -14,30 +14,22 @@ The code is split to live in several files to reduce the amount of RAM necessary
 #include"common.hpp"
 #include"expose.hpp"
 
-BOOST_PYTHON_MODULE(minieigen){
-	py::scope().attr("__doc__")="miniEigen is wrapper for a small part of the `Eigen <http://eigen.tuxfamily.org>`_ library. Refer to its documentation for details. All classes in this module support pickling.";
+#include"casters.hpp"
 
-	py::docstring_options docopt;
-	docopt.enable_all();
-	docopt.disable_cpp_signatures();
+PYBIND11_MODULE(_minieigen11,mod){
+	mod.attr("__doc__")="minieigen11 is wrapper for a small part of the `Eigen <http://eigen.tuxfamily.org>`_ library via pybind11. Refer to its documentation for details. All classes in this module support pickling.";
 
+	py::options options; options.disable_function_signatures();
 
+	expose_vectors(mod);
+	expose_quaternion(mod);
+	expose_boxes(mod);
+	expose_matrices(mod); // must come after vectors
+#if 0
+	expose_complex(mod);
+#endif
 
-	expose_converters(); // in expose-converters.cpp
-
-	expose_vectors();
-	expose_matrices(); // must come after vectors
-	expose_complex();
-	expose_quaternion();
-	expose_boxes();
-
-	py::def("float2str",&doubleToShortest,(py::arg("f"),py::arg("pad")=0),"Return the shortest string representation of *f* which will is equal to *f* when converted back to float. This function is only useful in Python prior to 3.0; starting from that version, standard string conversion does just that.");
-
-	#ifdef EIGEN_DONT_ALIGN
-		py::scope().attr("vectorize")=false;
-	#else
-		py::scope().attr("vectorize")=true;
-	#endif
+	mod.def("float2str",&doubleToShortest,py::arg("f"),py::arg("pad")=0,"Return the shortest string representation of *f* which will is equal to *f* when converted back to float. This function is only useful in Python prior to 3.0; starting from that version, standard string conversion does just that.");
 };
 
 

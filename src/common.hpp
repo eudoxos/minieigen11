@@ -18,7 +18,7 @@ typedef double Real;
 #include<Eigen/Eigenvalues>
 #include<Eigen/SVD>
 
-#include<unsupported/Eigen/AlignedVector3>
+// #include<unsupported/Eigen/AlignedVector3>
 
 // integral type for indices, to avoid compiler warnings with int
 typedef Eigen::Matrix<int,1,1>::Index Index;
@@ -28,7 +28,7 @@ typedef Eigen::Matrix<int ,2,1> Vector2i;
 typedef Eigen::Matrix<Real,2,1> Vector2r;
 typedef Eigen::Matrix<int ,3,1> Vector3i;
 typedef Eigen::Matrix<Real,3,1> Vector3r;
-typedef Eigen::AlignedVector3<Real> Vector3ra;
+// typedef Eigen::AlignedVector3<Real> Vector3ra;
 typedef Eigen::Matrix<Real,4,1> Vector4r;
 typedef Eigen::Matrix<int ,6,1> Vector6i;
 typedef Eigen::Matrix<Real,6,1> Vector6r;
@@ -65,14 +65,12 @@ using std::string;
 #include<iomanip>
 #include<vector>
 
-#include<boost/python.hpp>
-namespace py=boost::python;
-#include<boost/lexical_cast.hpp>
-using boost::lexical_cast;
-#include<boost/static_assert.hpp>
+#include<pybind11/pybind11.h>
+#include<pybind11/operators.h>
+namespace py=pybind11;
 
 /**** double-conversion helpers *****/
-#include"double-conversion/double-conversion.h"
+#include<double-conversion/double-conversion.h>
 
 static double_conversion::DoubleToStringConverter doubleToString(
 	double_conversion::DoubleToStringConverter::NO_FLAGS,
@@ -99,10 +97,10 @@ static inline string doubleToShortest(double d, int pad=0){
 } 
 
 
-/* generic function to print numbers, via lexical_cast plus padding -- used for ints */
+/* generic function to print numbers, via std::to_string plus padding -- used for ints */
 template<typename T>
 string num_to_string(const T& num, int pad=0){
-	string ret(lexical_cast<string>(num));
+	string ret(std::to_string(num));
 	if(pad==0 || (int)ret.size()>=pad) return ret;
 	return string(pad-ret.size(),' ')+ret; // left-pad with spaces
 }
@@ -133,8 +131,8 @@ static inline string num_to_string(const double& num, int pad=0){ return doubleT
 
 
 /*** getters and setters with bound guards ***/
-static inline void IDX_CHECK(Index i,Index MAX){ if(i<0 || i>=MAX) { PyErr_SetString(PyExc_IndexError,("Index "+lexical_cast<string>(i)+" out of range 0.." + lexical_cast<string>(MAX-1)).c_str()); py::throw_error_already_set(); } }
-static inline void IDX2_CHECKED_TUPLE_INTS(py::tuple tuple,const Index max2[2], Index arr2[2]) {Index l=py::len(tuple); if(l!=2) { PyErr_SetString(PyExc_IndexError,"Index must be integer or a 2-tuple"); py::throw_error_already_set(); } for(int _i=0; _i<2; _i++) { py::extract<Index> val(tuple[_i]); if(!val.check()){ PyErr_SetString(PyExc_ValueError,("Unable to convert "+lexical_cast<string>(_i)+"-th index to integer.").c_str()); py::throw_error_already_set(); } Index v=val(); IDX_CHECK(v,max2[_i]); arr2[_i]=v; }  }
+static inline void IDX_CHECK(Index i,Index MAX){ if(i<0 || i>=MAX) { PyErr_SetString(PyExc_IndexError,("Index "+std::to_string(i)+" out of range 0.." + std::to_string(MAX-1)).c_str()); throw py::error_already_set(); } }
+static inline void IDX2_CHECKED_TUPLE_INTS(py::tuple tuple,const Index max2[2], Index arr2[2]) {Index l=py::len(tuple); if(l!=2) { PyErr_SetString(PyExc_IndexError,"Index must be integer or a 2-tuple"); throw py::error_already_set(); } for(int _i=0; _i<2; _i++) { py::isinstance<Index>(tuple[_i]); if(!py::isinstance<Index>(tuple[_i])){ PyErr_SetString(PyExc_ValueError,("Unable to convert "+std::to_string(_i)+"-th index to integer.").c_str()); throw py::error_already_set(); } Index v=py::cast<Index>(tuple[_i]); IDX_CHECK(v,max2[_i]); arr2[_i]=v; }  }
 
-static inline string object_class_name(const py::object& obj){ return py::extract<string>(obj.attr("__class__").attr("__name__"))(); }
+static inline string object_class_name(const py::object& obj){ return py::cast<string>(obj.attr("__class__").attr("__name__")); }
 

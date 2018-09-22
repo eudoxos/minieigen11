@@ -1,4 +1,10 @@
-#include"converters.hpp"
+#include"casters-funcs.hpp"
+
+namespace pybind11{ namespace detail {
+	// #define VECTOR_LOADER(VecT,VecT_) template<> struct type_caster<VecT>{ PYBIND11_TYPE_CASTER(VecT,VecT_); bool load(handle src, bool){ return VectorT_load_from_sequence(src,value); }};
+	template<> struct type_caster<VectorXr>{ PYBIND11_TYPE_CASTER(VectorXr,"VectorX"); bool load(handle src, bool){ return VectorT_load_from_sequence(src,value); }};
+}};
+#if 0
 void expose_converters(){
 	custom_VectorAnyAny_from_sequence<VectorXr>();
 	custom_VectorAnyAny_from_sequence<Vector6r>();
@@ -25,3 +31,4 @@ void expose_converters(){
 		custom_MatrixAnyAny_from_sequence<MatrixXcr>();
 	#endif
 }
+#endif

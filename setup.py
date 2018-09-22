@@ -1,37 +1,65 @@
-# encoding: utf-8
-from distutils.core import setup,Extension
-import sys, glob
+import os
+import re
+import sys
+import platform
+import subprocess
 
-# vectorization is currently broken and experimental ONLY
-vectorize=False
+from setuptools import setup, Extension
+from setuptools.command.build_ext import build_ext
+from distutils.version import LooseVersion
 
-if vectorize: define_macros=[]
-else: define_macros=[('EIGEN_DONT_ALIGN',None)]
+class CMakeExtension(Extension):
+    def __init__(self, name, sourcedir=''):
+        Extension.__init__(self, name, sources=[])
+        self.sourcedir = os.path.abspath(sourcedir)
 
-if sys.platform=='win32':
-    libraries=['boost_python-mgw47-mt-1_51']
-    library_dirs=[r'c:\src\boost_1_51_0\stage\lib']
-    include_dirs=[r'c:\src\boost_1_51_0',r'c:\src\eigen-3.1.1']
-    if not vectorize:
-    # SSE2 might cause DLL load error (ImportError: DLL load failed with error code -1073741795).
-    # Until it is determined for sure, disable vectorization here. See also:
-    # * http://matplotlib.1069221.n5.nabble.com/Problem-with-Basemap-and-Python-2-6-under-Windows-XP-td777.html
-    # * https://bugs.launchpad.net/panda3d/+bug/919237
-        define_macros+=[('EIGEN_DONT_VECTORIZE',None)]
-else:
-    libraries=['boost_python-py%d%d'%(sys.version_info[0],sys.version_info[1])]
-    library_dirs=[]
-    include_dirs=['/usr/include/eigen3','/usr/local/include/eigen3','minieigen']
+class CMakeBuild(build_ext):
+    def run(self):
+        try:
+            out = subprocess.check_output(['cmake', '--version'])
+        except OSError:
+            raise RuntimeError("CMake must be installed to build the following extensions: " +
+                               ", ".join(e.name for e in self.extensions))
 
-setup(name='minieigen',
-    version='0.5.4',
+        if platform.system() == "Windows":
+            cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
+            if cmake_version < '3.1.0':
+                raise RuntimeError("CMake >= 3.1.0 is required on Windows")
+
+        for ext in self.extensions:
+            self.build_extension(ext)
+
+    def build_extension(self, ext):
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
+        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
+                      '-DPYTHON_EXECUTABLE=' + sys.executable]
+
+        cfg = 'Debug' if self.debug else 'Release'
+        build_args = ['--config', cfg]
+
+        if platform.system() == "Windows":
+            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
+            if sys.maxsize > 2**32:
+                cmake_args += ['-A', 'x64']
+            build_args += ['--', '/m']
+        else:
+            cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+            build_args += ['--', '-j2']
+
+        env = os.environ.copy()
+        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
+                                                              self.distribution.get_version())
+        if not os.path.exists(self.build_temp):
+            os.makedirs(self.build_temp)
+        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
+        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
+
+setup(name='minieigen11',
+    version='0.6.0',
     author='Václav Šmilauer',
     author_email='eu@doxos.eu',
     url='https://github.com/eudoxos/minieigen',
     description='Wrap parts of Eigen3, c++ library for basic math and geometry.',
-    long_description='''
-A small wrapper for core parts of Eigen (http://eigen.tuxfamily.org), c++ library for linear algebra. It is mainly useful for inspecting c++ code which already uses eigen and boost::python. Supported types are Vectors (2,3,6 and dynamic-sized with integer, floating-point and complex values), Matrices (3x3, 6x6 and dynamic-sized with floating-point and complex values), Quaternions and 2d and 3d aligned boxes. Numerous methods are wrapped and the original API of Eigen is followed. The code compiles with a c++99 compiler. The documentation is at http://eudoxos.github.io/minieigen .
-''',
     classifiers=[
         'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
         'Programming Language :: Python',
@@ -41,29 +69,7 @@ A small wrapper for core parts of Eigen (http://eigen.tuxfamily.org), c++ librar
         'Intended Audience :: Science/Research',
         'Development Status :: 5 - Production/Stable'
     ],
-    ext_modules=[Extension('minieigen'+('_vectorized' if vectorize else ''),
-        # headers are in MANIFEST.in
-        sources=[
-            'src/minieigen.cpp',
-            'src/expose-boxes.cpp',
-            'src/expose-complex.cpp',
-            'src/expose-converters.cpp',
-            'src/expose-matrices.cpp',
-            'src/expose-quaternion.cpp',
-            'src/expose-vectors.cpp',
-            'src/double-conversion/bignum.cc',
-            'src/double-conversion/bignum-dtoa.cc',
-            'src/double-conversion/cached-powers.cc',
-            'src/double-conversion/diy-fp.cc',
-            'src/double-conversion/double-conversion.cc',
-            'src/double-conversion/fast-dtoa.cc',
-            'src/double-conversion/fixed-dtoa.cc',
-            'src/double-conversion/strtod.cc',
-        ],
-        libraries=libraries,
-        library_dirs=library_dirs,
-        include_dirs=['src']+include_dirs,
-        define_macros=define_macros
-    )],
+    ext_modules=[CMakeExtension('minieigen11')],
+    cmdclass=dict(build_Ext=CMakeBuild)
 )
 

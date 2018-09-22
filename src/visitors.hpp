@@ -1,17 +1,24 @@
 #pragma once
+#include <boost/utility/enable_if.hpp>
+#include <boost/type_traits/is_arithmetic.hpp>
+#include <boost/type_traits/is_pointer.hpp>
+
+#include<iostream>
+
 #include"common.hpp"
 // classes dealing with exposing actual types, with many switches inside depending on template arguments
 
 // methods common for vectors and matrices
 template<typename MatrixBaseT>
-class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >{
+class MatrixBaseVisitor{
 	typedef typename MatrixBaseT::Scalar Scalar; // could be complex number
 	typedef typename MatrixBaseT::RealScalar RealScalar; // this is the "real" (math) scalar
 	public:
 	template<class PyClass>
-	void visit(PyClass& cl) const {
+	static void visit(PyClass& cl) {
 		cl
-		.def(py::init<MatrixBaseT>(py::arg("other")))
+		.def(py::init<>())
+		.def(py::init<MatrixBaseT>(),py::arg("other"))
 		.def("__neg__",&MatrixBaseVisitor::__neg__)
 		.def("__add__",&MatrixBaseVisitor::__add__).def("__iadd__",&MatrixBaseVisitor::__iadd__)
 		.def("__sub__",&MatrixBaseVisitor::__sub__).def("__isub__",&MatrixBaseVisitor::__isub__)
@@ -19,7 +26,7 @@ class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >
 		.def("__mul__",&MatrixBaseVisitor::__mul__scalar<long>)
 		.def("__imul__",&MatrixBaseVisitor::__imul__scalar<long>)
 		.def("__rmul__",&MatrixBaseVisitor::__rmul__scalar<long>)
-		.def("isApprox",&MatrixBaseVisitor::isApprox,(py::arg("other"),py::arg("prec")=Eigen::NumTraits<Scalar>::dummy_precision()),"Approximate comparison with precision *prec*.")
+		.def("isApprox",&MatrixBaseVisitor::isApprox,py::arg("other"),py::arg("prec")=Eigen::NumTraits<Scalar>::dummy_precision(),"Approximate comparison with precision *prec*.")
 		.def("rows",&MatrixBaseT::rows,"Number of rows.")
 		.def("cols",&MatrixBaseT::cols,"Number of columns.")
 		;
@@ -37,8 +44,8 @@ class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >
 		visit_reductions_noncomplex<Scalar,PyClass>(cl);
 		
 	};
+	template<class PyClass> static string name(PyClass& cl){ return py::cast<string>(cl.attr("__name__")); }
 	private:
-	template<class PyClass> static string name(PyClass& cl){ return py::extract<string>(cl.attr("__name__"))(); }
 	// for dynamic matrices/vectors
 	template<typename MatrixBaseT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::enable_if_c<MatrixBaseT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
 		//std::cerr<<"MatrixBaseVisitor: dynamic MatrixBaseT for "<<name(cl)<<std::endl;
@@ -48,14 +55,14 @@ class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >
 	template<typename MatrixBaseT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::disable_if_c<MatrixBaseT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
 		//std::cerr<<"MatrixBaseVisitor: fixed MatrixBaseT for "<<name(cl)<<std::endl;
 		cl
-		.add_static_property("Ones",&MatrixBaseVisitor::Ones)
-		.add_static_property("Zero",&MatrixBaseVisitor::Zero)
-		.def("Random",&MatrixBaseVisitor::Random,"Return an object where all elements are randomly set to values between 0 and 1.").staticmethod("Random")
-		.add_static_property("Identity",&MatrixBaseVisitor::Identity)
+		.def_property_readonly_static("Ones",&MatrixBaseVisitor::Ones)
+		.def_property_readonly_static("Zero",&MatrixBaseVisitor::Zero)
+		.def_static("Random",&MatrixBaseVisitor::Random,"Return an object where all elements are randomly set to values between 0 and 1.")
+		.def_property_readonly_static("Identity",&MatrixBaseVisitor::Identity)
 		;
 	}
-	template<typename Scalar, class PyClass> static	void visit_if_float(PyClass& cl, typename boost::enable_if<boost::is_integral<Scalar> >::type* dummy = 0){ /* do nothing */ }
-	template<typename Scalar, class PyClass> static void visit_if_float(PyClass& cl, typename boost::disable_if<boost::is_integral<Scalar> >::type* dummy = 0){
+	template<typename Scalar, class PyClass> static	void visit_if_float(PyClass& cl, typename boost::enable_if<std::is_integral<Scalar> >::type* dummy = 0){ /* do nothing */ }
+	template<typename Scalar, class PyClass> static void visit_if_float(PyClass& cl, typename boost::disable_if<std::is_integral<Scalar> >::type* dummy = 0){
 		// operations with other scalars (Scalar is the floating type, long is the python integer type)
 		// __trudiv__ is for py3k
 		cl
@@ -81,10 +88,10 @@ class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >
 	}
 	// for fixed-size matrices/vectors only
 	static RealScalar maxAbsCoeff(const MatrixBaseT& m){ return m.array().abs().maxCoeff(); }
-	static MatrixBaseT Ones(){ return MatrixBaseT::Ones(); }
-	static MatrixBaseT Zero(){ return MatrixBaseT::Zero(); }
+	static MatrixBaseT Ones(py::object){ return MatrixBaseT::Ones(); }
+	static MatrixBaseT Zero(py::object){ return MatrixBaseT::Zero(); }
 	static MatrixBaseT Random(){ return MatrixBaseT::Random(); }
-	static MatrixBaseT Identity(){ return MatrixBaseT::Identity(); }
+	static MatrixBaseT Identity(py::object){ return MatrixBaseT::Identity(); }
 
 	static bool __eq__(const MatrixBaseT& a, const MatrixBaseT& b){
 		if(a.rows()!=b.rows() || a.cols()!=b.cols()) return false;
@@ -129,8 +136,7 @@ class MatrixBaseVisitor: public py::def_visitor<MatrixBaseVisitor<MatrixBaseT> >
 };
 
 template<typename VectorT>
-class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
-	friend class def_visitor_access;
+class VectorVisitor {
 	typedef typename VectorT::Scalar Scalar;
 	typedef Eigen::Matrix<Scalar,VectorT::RowsAtCompileTime,VectorT::RowsAtCompileTime> CompatMatrixT;
 	typedef Eigen::Matrix<Scalar,2,1> CompatVec2;
@@ -140,10 +146,10 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 	enum{Dim=VectorT::RowsAtCompileTime};
 	public:
 	template<class PyClass>
-	void visit(PyClass& cl) const {
+	static void visit(PyClass& cl) {
 		MatrixBaseVisitor<VectorT>().visit(cl);
 		cl
-		.def_pickle(VectorPickle())
+		.def("__getstate__",&VectorVisitor::__getstate__) // XXX: __setstate__
 		.def("__setitem__",&VectorVisitor::set_item)
 		.def("__getitem__",&VectorVisitor::get_item)
 		.def("__str__",&VectorVisitor::__str__).def("__repr__",&VectorVisitor::__str__)
@@ -163,17 +169,17 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 		cl
 		.def("__len__",&VectorVisitor::dyn__len__)
 		.def("resize",&VectorVisitor::resize)
-		.def("Unit",&VectorVisitor::dyn_Unit).staticmethod("Unit")
-		.def("Ones",&VectorVisitor::dyn_Ones).staticmethod("Ones")
-		.def("Zero",&VectorVisitor::dyn_Zero).staticmethod("Zero")
-		.def("Random",&VectorVisitor::dyn_Random,py::arg("len"),"Return vector of given length with all elements set to values between 0 and 1 randomly.").staticmethod("Random")
+		.def_static("Unit",&VectorVisitor::dyn_Unit)
+		.def_static("Ones",&VectorVisitor::dyn_Ones)
+		.def_static("Zero",&VectorVisitor::dyn_Zero)
+		.def_static("Random",&VectorVisitor::dyn_Random,py::arg("len"),"Return vector of given length with all elements set to values between 0 and 1 randomly.")
 		;
 	}
 	// for fixed-size vectors
 	template<typename VectorT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::disable_if_c<VectorT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
 		//std::cerr<<"VectorVisitor: fixed vector for "<<name()<<std::endl;
-		cl.def("__len__",&VectorVisitor::__len__).staticmethod("__len__")
-		.def("Unit",&VectorVisitor::Unit).staticmethod("Unit")
+		cl.def_static("__len__",&VectorVisitor::__len__)
+		.def_static("Unit",&VectorVisitor::Unit)
 		;
 	}
 
@@ -182,30 +188,30 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 	// 2-vector
 	template<typename VectorT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==2>::type* dummy=0){
 		cl
-		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar>((py::arg("x"),py::arg("y"))))
-		.add_static_property("UnitX",&VectorVisitor::Vec2_UnitX)
-		.add_static_property("UnitY",&VectorVisitor::Vec2_UnitY)
+		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar>(),py::arg("x"),py::arg("y"))
+		.def_property_readonly_static("UnitX",&VectorVisitor::Vec2_UnitX)
+		.def_property_readonly_static("UnitY",&VectorVisitor::Vec2_UnitY)
 		;
 	}
-	static CompatVec2 Vec2_UnitX(){ return CompatVec2::UnitX(); }
-	static CompatVec2 Vec2_UnitY(){ return CompatVec2::UnitY(); }
+	static CompatVec2 Vec2_UnitX(py::object){ return CompatVec2::UnitX(); }
+	static CompatVec2 Vec2_UnitY(py::object){ return CompatVec2::UnitY(); }
 
 	// 3-vector
 	template<typename VectorT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==3>::type* dummy=0){
 		cl
-		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar,typename VectorT2::Scalar>((py::arg("x"),py::arg("y"),py::arg("z"))))
+		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar,typename VectorT2::Scalar>(),py::arg("x"),py::arg("y"),py::arg("z"))
 		.def("cross",&VectorVisitor::cross) // cross-product only meaningful for 3-sized vectors
-		.add_static_property("UnitX",&VectorVisitor::Vec3_UnitX)
-		.add_static_property("UnitY",&VectorVisitor::Vec3_UnitY)
-		.add_static_property("UnitZ",&VectorVisitor::Vec3_UnitZ)
+		.def_property_readonly_static("UnitX",&VectorVisitor::Vec3_UnitX)
+		.def_property_readonly_static("UnitY",&VectorVisitor::Vec3_UnitY)
+		.def_property_readonly_static("UnitZ",&VectorVisitor::Vec3_UnitZ)
 		// swizzles
 		.def("xy",&VectorVisitor::Vec3_xy).def("yx",&VectorVisitor::Vec3_yx).def("xz",&VectorVisitor::Vec3_xz).def("zx",&VectorVisitor::Vec3_zx).def("yz",&VectorVisitor::Vec3_yz).def("zy",&VectorVisitor::Vec3_zy)
 		;
 	}
 	static CompatVec3 cross(const CompatVec3& self, const CompatVec3& other){ return self.cross(other); }
-	static CompatVec3 Vec3_UnitX(){ return CompatVec3::UnitX(); }
-	static CompatVec3 Vec3_UnitY(){ return CompatVec3::UnitY(); }
-	static CompatVec3 Vec3_UnitZ(){ return CompatVec3::UnitZ(); }
+	static CompatVec3 Vec3_UnitX(py::object){ return CompatVec3::UnitX(); }
+	static CompatVec3 Vec3_UnitY(py::object){ return CompatVec3::UnitY(); }
+	static CompatVec3 Vec3_UnitZ(py::object){ return CompatVec3::UnitZ(); }
 
 	static CompatVec2 Vec3_xy(const CompatVec3& v){ return CompatVec2(v[0],v[1]); }
 	static CompatVec2 Vec3_yx(const CompatVec3& v){ return CompatVec2(v[1],v[0]); }
@@ -217,15 +223,15 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 	// 4-vector
 	template<typename VectorT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==4>::type* dummy=0){
 		cl
-		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar,typename VectorT2::Scalar>((py::arg("v0"),py::arg("v1"),py::arg("v2"),py::arg("v3"))))
+		.def(py::init<typename VectorT2::Scalar,typename VectorT2::Scalar,typename VectorT2::Scalar>(),py::arg("v0"),py::arg("v1"),py::arg("v2"),py::arg("v3"))
 		;
 	}
 
 	// 6-vector
 	template<typename VectorT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==6>::type* dummy=0){
 		cl
-		.def("__init__",py::make_constructor(&VectorVisitor::Vec6_fromElements,py::default_call_policies(),(py::arg("v0"),py::arg("v1"),py::arg("v2"),py::arg("v3"),py::arg("v4"),py::arg("v5"))))
-		.def("__init__",py::make_constructor(&VectorVisitor::Vec6_fromHeadTail,py::default_call_policies(),(py::arg("head"),py::arg("tail"))))
+		.def(py::init(&VectorVisitor::Vec6_fromElements),py::arg("v0"),py::arg("v1"),py::arg("v2"),py::arg("v3"),py::arg("v4"),py::arg("v5"))
+		.def(py::init(&VectorVisitor::Vec6_fromHeadTail),py::arg("head"),py::arg("tail"))
 		.def("head",&VectorVisitor::Vec6_head).def("tail",&VectorVisitor::Vec6_tail)
 		;
 	}
@@ -238,7 +244,7 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 	// ctor for dynamic vectors
 	template<typename VectorT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<VectorT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy=0){
 		cl
-		.def("__init__",py::make_constructor(&VecX_fromList,py::default_call_policies(),(py::arg("vv"))))
+		.def(py::init(&VecX_fromList),py::arg("vv"))
 		;
 	}
 	static CompatVecX* VecX_fromList(const std::vector<Scalar>& ii){ CompatVecX* v(new CompatVecX(ii.size())); for(size_t i=0; i<ii.size(); i++) (*v)[i]=ii[i]; return v; }
@@ -258,23 +264,26 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 	static CompatMatrixT asDiagonal(const VectorT& self){ return self.asDiagonal(); }
 	static Scalar get_item(const VectorT& self, Index ix){ IDX_CHECK(ix,dyn()?(Index)self.size():(Index)Dim); return self[ix]; }
 	static void set_item(VectorT& self, Index ix, Scalar value){ IDX_CHECK(ix,dyn()?(Index)self.size():(Index)Dim); self[ix]=value; }
-	struct VectorPickle: py::pickle_suite{
-		static py::tuple getinitargs(const VectorT& x){
-			// if this fails, add supported size to the switch below
-			BOOST_STATIC_ASSERT(Dim==2 || Dim==3 || Dim==4 || Dim==6 || Dim==Eigen::Dynamic);
-			switch((Index)Dim){
-				case 2: return py::make_tuple(x[0],x[1]);
-				case 3: return py::make_tuple(x[0],x[1],x[2]);
-				case 4: return py::make_tuple(x[0],x[1],x[2],x[3]);
-				case 6: return py::make_tuple(x[0],x[1],x[2],x[3],x[4],x[5]);
-				default: return py::make_tuple(py::list(x));
+	static py::tuple __getstate__(const VectorT& x){
+		// if this fails, add supported size to the switch below
+		static_assert(Dim==2 || Dim==3 || Dim==4 || Dim==6 || Dim==Eigen::Dynamic);
+		switch((Index)Dim){
+			case 2: return py::make_tuple(x[0],x[1]);
+			case 3: return py::make_tuple(x[0],x[1],x[2]);
+			case 4: return py::make_tuple(x[0],x[1],x[2],x[3]);
+			case 6: return py::make_tuple(x[0],x[1],x[2],x[3],x[4],x[5]);
+			default: {
+				py::list ret;
+				for(Index i=0; i<Dim; i++) ret.append(x[i]);
+				return py::make_tuple(ret);
 			}
-		};
+		}
+
 	};
 	public:
 	static string __str__(const py::object& obj){
 		std::ostringstream oss;
-		const VectorT& self=py::extract<VectorT>(obj)();
+		const VectorT& self=py::cast<VectorT>(obj);
 		bool list=(Dim==Eigen::Dynamic && self.size()>0);
 		oss<<object_class_name(obj)<<(list?"([":"(");
 		Vector_data_stream(self,oss);
@@ -290,8 +299,7 @@ class VectorVisitor: public py::def_visitor<VectorVisitor<VectorT> >{
 };
 
 template<typename MatrixT>
-class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
-	friend class def_visitor_access;
+class MatrixVisitor{
 	typedef typename MatrixT::Scalar Scalar;
 	typedef typename Eigen::Matrix<Scalar,MatrixT::RowsAtCompileTime,1> CompatVectorT;
 	typedef Eigen::Matrix<Scalar,3,3> CompatMat3;
@@ -303,11 +311,12 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	enum{Dim=MatrixT::RowsAtCompileTime};
 	public:
 	template<class PyClass>
-	void visit(PyClass& cl) const {
+	static void visit(PyClass& cl) {
+		//std::cerr<<"MatrixVisitor: "<<MatrixBaseVisitor<MatrixT>::name(cl)<<std::endl;
 		MatrixBaseVisitor<MatrixT>().visit(cl);
 		cl
-		.def_pickle(MatrixPickle())
-		.def("__init__",py::make_constructor(&MatrixVisitor::fromDiagonal,py::default_call_policies(),(py::arg("diag"))))
+		.def("__getstate__",&MatrixVisitor::__getstate__) // XXX: setstate
+		.def(py::init(&MatrixVisitor::fromDiagonal),py::arg("diag"))
 
 		.def("determinant",&MatrixT::determinant,"Return matrix determinant.")
 		.def("trace",&MatrixT::trace,"Return sum of diagonal elements.")
@@ -327,7 +336,7 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 		visit_fixed_or_dynamic<MatrixT,PyClass>(cl);
 		visit_special_sizes<MatrixT,PyClass>(cl);
 
-		//std::cerr<<"MatrixVisitor: "<<name()<<std::endl;
+		//std::cerr<<"MatrixVisitor: "<<MatrixBaseVisitor<MatrixT>::name(cl)<<" DONE"<<std::endl;
 
 	}
 	private:
@@ -335,16 +344,16 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	template<typename MatrixT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::enable_if_c<MatrixT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
 		cl
 		.def("__len__",&MatrixVisitor::dyn__len__)
-		.def("resize",&MatrixVisitor::resize,"Change size of the matrix, keep values of elements which exist in the new matrix",(py::arg("rows"),py::arg("cols")))
-		.def("Ones",&MatrixVisitor::dyn_Ones,(py::arg("rows"),py::arg("cols")),"Create matrix of given dimensions where all elements are set to 1.").staticmethod("Ones")
-		.def("Zero",&MatrixVisitor::dyn_Zero,(py::arg("rows"),py::arg("cols")),"Create zero matrix of given dimensions").staticmethod("Zero")
-		.def("Random",&MatrixVisitor::dyn_Random,(py::arg("rows"),py::arg("cols")),"Create matrix with given dimensions where all elements are set to number between 0 and 1 (uniformly-distributed).").staticmethod("Random")
-		.def("Identity",&MatrixVisitor::dyn_Identity,(py::arg("rank")),"Create identity matrix with given rank (square).").staticmethod("Identity")
+		.def("resize",&MatrixVisitor::resize,"Change size of the matrix, keep values of elements which exist in the new matrix",py::arg("rows"),py::arg("cols"))
+		.def_static("Ones",&MatrixVisitor::dyn_Ones,py::arg("rows"),py::arg("cols"),"Create matrix of given dimensions where all elements are set to 1.")
+		.def_static("Zero",&MatrixVisitor::dyn_Zero,py::arg("rows"),py::arg("cols"),"Create zero matrix of given dimensions")
+		.def_static("Random",&MatrixVisitor::dyn_Random,py::arg("rows"),py::arg("cols"),"Create matrix with given dimensions where all elements are set to number between 0 and 1 (uniformly-distributed).")
+		.def_static("Identity",&MatrixVisitor::dyn_Identity_rc,py::arg("rows"),py::arg("cols")=0,"Create identity matrix with given rank; if *cols* is omited, the matrix will be square.")
 		;
 	}
 	// for fixed-size matrices
 	template<typename MatrixT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::disable_if_c<MatrixT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
-		cl.def("__len__",&MatrixVisitor::__len__).staticmethod("__len__")
+		cl.def_static("__len__",&MatrixVisitor::__len__)
 		;
 	}
 
@@ -375,8 +384,8 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	// 3x3
 	template<typename MatT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<MatT2::RowsAtCompileTime==3>::type* dummy=0){
 		cl
-		.def("__init__",py::make_constructor(&MatrixVisitor::Mat3_fromElements,py::default_call_policies(),(py::arg("m00"),py::arg("m01"),py::arg("m02"),py::arg("m10"),py::arg("m11"),py::arg("m12"),py::arg("m20"),py::arg("m21"),py::arg("m22"))))
-		.def("__init__",py::make_constructor(&MatrixVisitor::Mat3_fromRows,py::default_call_policies(),(py::arg("r0"),py::arg("r1"),py::arg("r2"),py::arg("cols")=false)))
+		.def(py::init(&MatrixVisitor::Mat3_fromElements),py::arg("m00"),py::arg("m01"),py::arg("m02"),py::arg("m10"),py::arg("m11"),py::arg("m12"),py::arg("m20"),py::arg("m21"),py::arg("m22"))
+		.def(py::init(&MatrixVisitor::Mat3_fromRows),py::arg("r0"),py::arg("r1"),py::arg("r2"),py::arg("cols")=false)
 		;
 	}
 	static CompatMat3* Mat3_fromElements(const Scalar& m00, const Scalar& m01, const Scalar& m02, const Scalar& m10, const Scalar& m11, const Scalar& m12, const Scalar& m20, const Scalar& m21, const Scalar& m22){ CompatMat3* m(new CompatMat3); (*m)<<m00,m01,m02,m10,m11,m12,m20,m21,m22; return m; }
@@ -385,8 +394,8 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	// 6x6
 	template<typename MatT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<MatT2::RowsAtCompileTime==6>::type* dummy=0){
 		cl
-		.def("__init__",py::make_constructor(&MatrixVisitor::Mat6_fromBlocks,py::default_call_policies(),(py::arg("ul"),py::arg("ur"),py::arg("ll"),py::arg("lr"))))
-		.def("__init__",py::make_constructor(&MatrixVisitor::Mat6_fromRows,py::default_call_policies(),(py::arg("l0"),py::arg("l1"),py::arg("l2"),py::arg("l3"),py::arg("l4"),py::arg("l5"),py::arg("cols")=false)))
+		.def(py::init(&MatrixVisitor::Mat6_fromBlocks),py::arg("ul"),py::arg("ur"),py::arg("ll"),py::arg("lr"))
+		.def(py::init(&MatrixVisitor::Mat6_fromRows),py::arg("l0"),py::arg("l1"),py::arg("l2"),py::arg("l3"),py::arg("l4"),py::arg("l5"),py::arg("cols")=false)
 		/* 3x3 blocks */
 			.def("ul",&MatrixVisitor::Mat6_ul,"Return upper-left 3x3 block")
 			.def("ur",&MatrixVisitor::Mat6_ur,"Return upper-right 3x3 block")
@@ -406,8 +415,8 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	// XxX
 	template<typename MatT2, class PyClass> static void visit_special_sizes(PyClass& cl, typename boost::enable_if_c<MatT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy=0){
 		cl
-		.def("__init__",py::make_constructor(&MatrixVisitor::MatX_fromRows,py::default_call_policies(),(py::arg("r0")=CompatVecX(),py::arg("r1")=CompatVecX(),py::arg("r2")=CompatVecX(),py::arg("r3")=CompatVecX(),py::arg("r4")=CompatVecX(),py::arg("r5")=CompatVecX(),py::arg("r6")=CompatVecX(),py::arg("r7")=CompatVecX(),py::arg("r8")=CompatVecX(),py::arg("r9")=CompatVecX(),py::arg("cols")=false)))
-		.def("__init__",py::make_constructor(&MatrixVisitor::MatX_fromRowSeq,py::default_call_policies(),(py::arg("rows"),py::arg("cols")=false)))
+		.def(py::init(&MatrixVisitor::MatX_fromRows),py::arg("r0")=CompatVecX(),py::arg("r1")=CompatVecX(),py::arg("r2")=CompatVecX(),py::arg("r3")=CompatVecX(),py::arg("r4")=CompatVecX(),py::arg("r5")=CompatVecX(),py::arg("r6")=CompatVecX(),py::arg("r7")=CompatVecX(),py::arg("r8")=CompatVecX(),py::arg("r9")=CompatVecX(),py::arg("cols")=false)
+		.def(py::init(&MatrixVisitor::MatX_fromRowSeq),py::arg("rows"),py::arg("cols")=false)
 		;
 	}
 
@@ -416,10 +425,10 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 		int cols=-1, rows=-1;
 		for(int i=0; i<10; i++){
 			if(rows<0 && rr[i].size()==0) rows=i;
-			if(rows>=0 && rr[i].size()>0) throw std::invalid_argument("Matrix6r: non-empty rows not allowed after first empty row, which marks end of the matrix.");
+			if(rows>=0 && rr[i].size()>0) throw std::invalid_argument("MatrixXr: non-empty rows not allowed after first empty row, which marks end of the matrix.");
 		}
 		cols=(rows>0?rr[0].size():0);
-		for(int i=1; i<rows; i++) if(rr[i].size()!=cols) throw std::invalid_argument(("Matrix6: all non-empty rows must have the same length (0th row has "+lexical_cast<string>(rr[0].size())+" items, "+lexical_cast<string>(i)+"th row has "+lexical_cast<string>(rr[i].size())+" items)").c_str());
+		for(int i=1; i<rows; i++) if(rr[i].size()!=cols) throw std::invalid_argument(("Matrix6: all non-empty rows must have the same length (0th row has "+std::to_string(rr[0].size())+" items, "+std::to_string(i)+"th row has "+std::to_string(rr[i].size())+" items)").c_str());
 		CompatMatX* m;
 		m=setCols?new CompatMatX(cols,rows):new CompatMatX(rows,cols);
 		for(int i=0; i<rows; i++){ if(setCols) m->col(i)=rr[i]; else m->row(i)=rr[i]; }
@@ -438,7 +447,8 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	static MatrixT dyn_Ones(Index rows, Index cols){ return MatrixT::Ones(rows,cols); }
 	static MatrixT dyn_Zero(Index rows, Index cols){ return MatrixT::Zero(rows,cols); }
 	static MatrixT dyn_Random(Index rows, Index cols){ return MatrixT::Random(rows,cols); }
-	static MatrixT dyn_Identity(Index rows, Index cols){ return MatrixT::Identity(rows,cols); }
+	static MatrixT dyn_Identity_rc(Index rows, Index cols){ return MatrixT::Identity(rows,cols>=0?cols:rows); }
+	static MatrixT dyn_Identity_rank(Index rank){ return MatrixT::Identity(rank,rank); }
 	static typename MatrixT::Index dyn__len__(MatrixT& a){ return a.rows(); }
 	static typename MatrixT::Index __len__(){ return MatrixT::RowsAtCompileTime; }
 	static MatrixT Identity(){ return MatrixT::Identity(); }
@@ -484,7 +494,7 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 	static bool dyn(){ return Dim==Eigen::Dynamic; }
 	static string __str__(const py::object& obj){
 		std::ostringstream oss;
-		const MatrixT& m=py::extract<MatrixT>(obj)();
+		const MatrixT& m=py::cast<MatrixT>(obj);
 		oss<<object_class_name(obj)<<"(";
 		bool wrap=((dyn() && m.rows()>1) || (!dyn() && m.rows()>3));
 		// non-wrapping fixed-size: flat list of numbers, not rows as tuples (Matrix3)
@@ -501,34 +511,36 @@ class MatrixVisitor: public py::def_visitor<MatrixVisitor<MatrixT> >{
 		oss<<")";
 		return oss.str();
 	}
-	struct MatrixPickle: py::pickle_suite{
-		static py::tuple getinitargs(const MatrixT& x){
-			// if this fails, add supported size to the switch below
-			BOOST_STATIC_ASSERT(Dim==2 || Dim==3 || Dim==6 || Dim==Eigen::Dynamic);
-			switch((Index)Dim){
-				case 2: return py::make_tuple(x(0,0),x(0,1),x(1,0),x(1,1));
-				case 3: return py::make_tuple(x(0,0),x(0,1),x(0,2),x(1,0),x(1,1),x(1,2),x(2,0),x(2,1),x(2,2));
-				case 6: return py::make_tuple(x.row(0),x.row(1),x.row(2),x.row(3),x.row(4),x.row(5));
-				// should return list of rows, which are VectorX
-				default: return py::make_tuple(py::list(x));
+	static py::tuple __getstate__(const MatrixT& x){
+		// if this fails, add supported size to the switch below
+		static_assert(Dim==2 || Dim==3 || Dim==6 || Dim==Eigen::Dynamic);
+		switch((Index)Dim){
+			case 2: return py::make_tuple(x(0,0),x(0,1),x(1,0),x(1,1));
+			case 3: return py::make_tuple(x(0,0),x(0,1),x(0,2),x(1,0),x(1,1),x(1,2),x(2,0),x(2,1),x(2,2));
+			case 6: return py::make_tuple(x.row(0),x.row(1),x.row(2),x.row(3),x.row(4),x.row(5));
+			// should return list of rows, which are VectorX
+			default:{
+				py::list ret;
+				for(Index r=0; r<x.rows(); r++){ ret.append(py::cast(x.row(r))); }
+				return py::tuple(ret);
 			}
-		};
+		}
 	};
 };
 
 
 template<typename Box>
-class AabbVisitor: public py::def_visitor<AabbVisitor<Box> >{
-	friend class def_visitor_access;
+class AabbVisitor{
 	typedef typename Box::VectorType VectorType;
 	typedef typename Box::Scalar Scalar;
 	public:
 	template <class PyClass>
-	void visit(PyClass& cl) const {
+	static void visit(PyClass& cl) {
 		cl
-		.def(py::init<Box>(py::arg("other")))
-		.def(py::init<VectorType,VectorType>((py::arg("min"),py::arg("max"))))
-		.def_pickle(BoxPickle())
+		.def(py::init<Box>(),py::arg("other"))
+		.def(py::init<VectorType,VectorType>(),py::arg("min"),py::arg("max"))
+		.def("__getstate__",[](const Box& b){ return py::make_tuple(b.min(),b.max()); })
+		// XXX: setstate
 		.def("volume",&Box::volume)
 		.def("empty",&Box::isEmpty)
 		.def("center",&AabbVisitor::center)
@@ -545,9 +557,12 @@ class AabbVisitor: public py::def_visitor<AabbVisitor<Box> >{
 		.def("intersection",&Box::intersection)
 		.def("merged",&Box::merged)
 		// those return internal references, which is what we want
-		.add_property("min",py::make_function(&AabbVisitor::min,py::return_internal_reference<>())) 
-		.add_property("max",py::make_function(&AabbVisitor::max,py::return_internal_reference<>()))
-		.def("__len__",&AabbVisitor::len).staticmethod("__len__")
+		// XXX: test this!!
+		// XXX: return_value_policy::reference_internal should be default
+		.def_property("min",&AabbVisitor::min,&AabbVisitor::setMin)
+		.def_property("max",&AabbVisitor::max,&AabbVisitor::setMax)
+
+		.def_static("__len__",&AabbVisitor::len)
 		.def("__setitem__",&AabbVisitor::set_item).def("__getitem__",&AabbVisitor::get_item)
 		.def("__setitem__",&AabbVisitor::set_minmax).def("__getitem__",&AabbVisitor::get_minmax)
 		.def("__str__",&AabbVisitor::__str__).def("__repr__",&AabbVisitor::__str__)
@@ -561,11 +576,10 @@ class AabbVisitor: public py::def_visitor<AabbVisitor<Box> >{
 	static void clamp(Box& self, const Box& other){ self.clamp(other); }
 	static VectorType& min(Box& self){ return self.min(); }
 	static VectorType& max(Box& self){ return self.max(); }
+	static void setMin(Box& self, const VectorType& v){ self.min()=v; }
+	static void setMax(Box& self, const VectorType& v){ self.max()=v; }
 	static VectorType center(const Box& self){ return self.center(); }
 	static VectorType sizes(const Box& self){ return self.sizes(); }
-	struct BoxPickle: py::pickle_suite{
-		static py::tuple getinitargs(const Box& x){ return py::make_tuple(x.min(),x.max()); }
-	};
 	static Index len(){ return 2; }
 	// getters and setters 
 	static Scalar get_item(const Box& self, py::tuple _idx){ Index idx[2]; Index mx[2]={2,Box::AmbientDimAtCompileTime}; IDX2_CHECKED_TUPLE_INTS(_idx,mx,idx); if(idx[0]==0) return self.min()[idx[1]]; return self.max()[idx[1]]; }
@@ -573,7 +587,7 @@ class AabbVisitor: public py::def_visitor<AabbVisitor<Box> >{
 	static VectorType get_minmax(const Box& self, Index idx){ IDX_CHECK(idx,2); if(idx==0) return self.min(); return self.max(); }
 	static void set_minmax(Box& self, Index idx, const VectorType& value){ IDX_CHECK(idx,2); if(idx==0) self.min()=value; else self.max()=value; }
 	static string __str__(const py::object& obj){
-		const Box& self=py::extract<Box>(obj)();
+		const Box& self=py::cast<Box>(obj);
 		std::ostringstream oss; oss<<object_class_name(obj)<<"((";
 		VectorVisitor<VectorType>::template Vector_data_stream<VectorType>(self.min(),oss);
 		oss<<"), (";
@@ -584,7 +598,7 @@ class AabbVisitor: public py::def_visitor<AabbVisitor<Box> >{
 };
 
 template<typename QuaternionT>
-class QuaternionVisitor:  public py::def_visitor<QuaternionVisitor<QuaternionT> >{
+class QuaternionVisitor{
 	typedef typename QuaternionT::Scalar Scalar;
 	typedef Eigen::Matrix<Scalar,3,1> CompatVec3;
 	typedef Eigen::Matrix<Scalar,Eigen::Dynamic,1> CompatVecX;
@@ -592,41 +606,41 @@ class QuaternionVisitor:  public py::def_visitor<QuaternionVisitor<QuaternionT> 
 	typedef Eigen::AngleAxis<Scalar> AngleAxisT;
 	public:
 	template<class PyClass>
-	void visit(PyClass& cl) const {
+	static void visit(PyClass& cl) {
 		cl
-		.def("__init__",py::make_constructor(&QuaternionVisitor::fromAxisAngle,py::default_call_policies(),(py::arg("axis"),py::arg("angle"))))
-		.def("__init__",py::make_constructor(&QuaternionVisitor::fromAngleAxis,py::default_call_policies(),(py::arg("angle"),py::arg("axis"))))
-		.def("__init__",py::make_constructor(&QuaternionVisitor::fromTwoVectors,py::default_call_policies(),(py::arg("u"),py::arg("v"))))
-		.def(py::init<Scalar,Scalar,Scalar,Scalar>((py::arg("w"),py::arg("x"),py::arg("y"),py::arg("z")),"Initialize from coefficients.\n\n.. note:: The order of coefficients is *w*, *x*, *y*, *z*. The [] operator numbers them differently, 0...4 for *x* *y* *z* *w*!"))
-		.def(py::init<CompatMat3>((py::arg("rotMatrix")))) //,"Initialize from given rotation matrix.")
-		.def(py::init<QuaternionT>((py::arg("other"))))
-		.def_pickle(QuaternionPickle())
+		.def(py::init<>(&QuaternionVisitor::fromAxisAngle),py::arg("axis"),py::arg("angle"))
+		.def(py::init<>(&QuaternionVisitor::fromAngleAxis),py::arg("angle"),py::arg("axis"))
+		.def(py::init<>(&QuaternionVisitor::fromTwoVectors),py::arg("u"),py::arg("v"))
+		.def(py::init<Scalar,Scalar,Scalar,Scalar>(),py::arg("w"),py::arg("x"),py::arg("y"),py::arg("z"),"Initialize from coefficients.\n\n.. note:: The order of coefficients is *w*, *x*, *y*, *z*. The [] operator numbers them differently, 0...4 for *x* *y* *z* *w*!")
+		.def(py::init<CompatMat3>(),py::arg("rotMatrix")) //,"Initialize from given rotation matrix.")
+		.def(py::init<QuaternionT>(),py::arg("other"))
+		.def("__getstate__",[](const QuaternionT& q){ return py::make_tuple(q.w(),q.x(),q.y(),q.z()); })
 		// properties
-		.add_static_property("Identity",&QuaternionVisitor::Identity)
+		.def_property_readonly_static("Identity",&QuaternionVisitor::Identity)
 		// methods
-		.def("setFromTwoVectors",&QuaternionVisitor::setFromTwoVectors,((py::arg("u"),py::arg("v"))))
+		.def("setFromTwoVectors",&QuaternionVisitor::setFromTwoVectors,py::arg("u"),py::arg("v"))
 		.def("angularDistance",&QuaternionVisitor::angularDistance)
 		.def("conjugate",&QuaternionT::conjugate)
 		.def("toAxisAngle",&QuaternionVisitor::toAxisAngle)
 		.def("toAngleAxis",&QuaternionVisitor::toAngleAxis)
 		.def("toRotationMatrix",&QuaternionT::toRotationMatrix)
 		.def("toRotationVector",&QuaternionVisitor::toRotationVector)
-		.def("Rotate",&QuaternionVisitor::Rotate,((py::arg("v"))))
+		.def("Rotate",&QuaternionVisitor::Rotate,py::arg("v"))
 		.def("inverse",&QuaternionT::inverse)
 		.def("norm",&QuaternionT::norm)
 		.def("normalize",&QuaternionT::normalize)
 		.def("normalized",&QuaternionT::normalized)
-		.def("slerp",&QuaternionVisitor::slerp,(py::arg("t"),py::arg("other")))
+		.def("slerp",&QuaternionVisitor::slerp,py::arg("t"),py::arg("other"))
 		// .def("random",&QuaternionVisitor::random,"Assign random orientation to the quaternion.")
 		// operators
 		.def(py::self * py::self)
 		.def(py::self *= py::self)
-		.def(py::self * py::other<CompatVec3>())
+		.def(py::self * CompatVec3())
 		.def("__eq__",&QuaternionVisitor::__eq__).def("__ne__",&QuaternionVisitor::__ne__)
 		.def("__sub__",&QuaternionVisitor::__sub__) 
 		// specials
 		.def("__abs__",&QuaternionT::norm)
-		.def("__len__",&QuaternionVisitor::__len__).staticmethod("__len__")
+		.def_static("__len__",&QuaternionVisitor::__len__)
 		.def("__setitem__",&QuaternionVisitor::__setitem__).def("__getitem__",&QuaternionVisitor::__getitem__)
 		.def("__str__",&QuaternionVisitor::__str__).def("__repr__",&QuaternionVisitor::__str__)
 		;
@@ -639,9 +653,7 @@ class QuaternionVisitor:  public py::def_visitor<QuaternionVisitor<QuaternionT> 
 	// those must be wrapped since "other" is declared as QuaternionBase<OtherDerived>; the type is then not inferred when using .def
 	static QuaternionT slerp(const QuaternionT& self, const Real& t, const QuaternionT& other){ return self.slerp(t,other); }
 	static Real angularDistance(const QuaternionT& self, const QuaternionT& other){ return self.angularDistance(other); }
-
-	struct QuaternionPickle: py::pickle_suite{static py::tuple getinitargs(const QuaternionT& x){ return py::make_tuple(x.w(),x.x(),x.y(),x.z());} };
-	static QuaternionT Identity(){ return QuaternionT::Identity(); }
+	static QuaternionT Identity(py::object){ return QuaternionT::Identity(); }
 	static Vector3r Rotate(const QuaternionT& self, const Vector3r& u){ return self*u; }
 	static py::tuple toAxisAngle(const QuaternionT& self){ AngleAxisT aa(self); return py::make_tuple(aa.axis(),aa.angle());}
 	static py::tuple toAngleAxis(const QuaternionT& self){ AngleAxisT aa(self); return py::make_tuple(aa.angle(),aa.axis());}
@@ -655,11 +667,10 @@ class QuaternionVisitor:  public py::def_visitor<QuaternionVisitor<QuaternionT> 
 	static Scalar __getitem__(const QuaternionT & self, Index idx){ IDX_CHECK(idx,4); if(idx==0) return self.x(); if(idx==1) return self.y(); if(idx==2) return self.z(); return self.w(); }
 	static void __setitem__(QuaternionT& self, Index idx, Real value){ IDX_CHECK(idx,4); if(idx==0) self.x()=value; else if(idx==1) self.y()=value; else if(idx==2) self.z()=value; else if(idx==3) self.w()=value; }
 	static string __str__(const py::object& obj){
-		const QuaternionT& self=py::extract<QuaternionT>(obj)();
+		const QuaternionT& self=py::cast<QuaternionT>(obj);
 		AngleAxisT aa(self);
 		return string(object_class_name(obj)+"((")+num_to_string(aa.axis()[0])+","+num_to_string(aa.axis()[1])+","+num_to_string(aa.axis()[2])+"),"+num_to_string(aa.angle())+")";
 	}
 	static Index __len__(){return 4;}
 };
-
 
