@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+project(minieigen11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_EXE_LINKER_FLAGS "-fuse-ld=gold")
+# disable LTO for now only!
+set(PYBIND11_LTO_CXX_FLAGS "")
+set(PYBIND11_CPP_STANDARD -std=c++1z)
+find_package(Eigen3 REQUIRED)
+find_package(pybind11 REQUIRED)
+pybind11_add_module(_minieigen11 THIN_LTO src/minieigen.cpp src/expose-vectors.cpp src/expose-boxes.cpp src/expose-complex.cpp src/expose-matrices.cpp src/expose-quaternion.cpp)
+target_link_libraries(_minieigen11 PRIVATE Eigen3::Eigen double-conversion)
