@@ -18,6 +18,8 @@ typedef double Real;
 #include<Eigen/Eigenvalues>
 #include<Eigen/SVD>
 
+
+
 // #include<unsupported/Eigen/AlignedVector3>
 
 // integral type for indices, to avoid compiler warnings with int
@@ -132,8 +134,16 @@ static inline string num_to_string(const double& num, int pad=0){ return doubleT
 
 
 /*** getters and setters with bound guards ***/
-static inline void IDX_CHECK(Index i,Index MAX){ if(i<0 || i>=MAX) { PyErr_SetString(PyExc_IndexError,("Index "+std::to_string(i)+" out of range 0.." + std::to_string(MAX-1)).c_str()); throw py::error_already_set(); } }
-static inline void IDX2_CHECKED_TUPLE_INTS(py::tuple tuple,const Index max2[2], Index arr2[2]) {Index l=py::len(tuple); if(l!=2) { PyErr_SetString(PyExc_IndexError,"Index must be integer or a 2-tuple"); throw py::error_already_set(); } for(int _i=0; _i<2; _i++) { py::isinstance<Index>(tuple[_i]); if(!py::isinstance<Index>(tuple[_i])){ PyErr_SetString(PyExc_ValueError,("Unable to convert "+std::to_string(_i)+"-th index to integer.").c_str()); throw py::error_already_set(); } Index v=py::cast<Index>(tuple[_i]); IDX_CHECK(v,max2[_i]); arr2[_i]=v; }  }
+static inline void IDX_CHECK(Index i,Index MAX){ if(i<0 || i>=MAX) { throw py::index_error("Index "+std::to_string(i)+" out of range 0.." + std::to_string(MAX-1)); } }
+static inline void IDX2_CHECKED_TUPLE_INTS(py::tuple tuple,const Index max2[2], Index arr2[2]) {Index l=py::len(tuple); if(l!=2) { PyErr_SetString(PyExc_IndexError,"Index must be integer or a 2-tuple"); throw py::error_already_set(); } for(int _i=0; _i<2; _i++) { try{ arr2[_i]=py::cast<Index>(tuple[_i]); } catch(...){ throw py::value_error("Unable to convert "+std::to_string(_i)+"-th index to integer."); } IDX_CHECK(arr2[_i],max2[_i]); }  }
 
 static inline string object_class_name(const py::object& obj){ return py::cast<string>(obj.attr("__class__").attr("__name__")); }
+
+template<typename T>
+bool pySeqItemCheck(PyObject* o, int i){
+	try{ py::cast<T>(PySequence_GetItem(o,i)); return true; } catch(...){ return false; }
+}
+
+template<typename T>
+T pySeqItemExtract(PyObject* o, int i){ return py::cast<T>(PySequence_GetItem(o,i)); }
 

@@ -1,6 +1,7 @@
 #include"casters-funcs.hpp"
 
 namespace pybind11{ namespace detail {
+#if 0
 	#define VECTOR_CASTER(VecT,VecT_) template<> struct type_caster<VecT>{ PYBIND11_TYPE_CASTER(VecT,VecT_); bool load(handle src, bool){ return VectorT_load_from_sequence(src,value); }};
 	VECTOR_CASTER(VectorXr,"VectorX");
 	VECTOR_CASTER(Vector6r,"Vector6");
@@ -9,6 +10,7 @@ namespace pybind11{ namespace detail {
 	VECTOR_CASTER(Vector3i,"Vector3i");
 	VECTOR_CASTER(Vector2r,"Vector2");
 	VECTOR_CASTER(Vector2i,"Vector2i");
+#endif
 	//template<> struct type_caster<VectorXr>{ PYBIND11_TYPE_CASTER(VectorXr,"VectorX"); bool load(handle src, bool){ return VectorT_load_from_sequence(src,value); }};
 }};
 #if 0

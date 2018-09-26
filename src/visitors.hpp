@@ -3,10 +3,8 @@
 #include <boost/type_traits/is_arithmetic.hpp>
 #include <boost/type_traits/is_pointer.hpp>
 
-// temporary, for helper routines
-#include"casters-funcs.hpp"
-
 #include<iostream>
+#include<set>
 
 #include"common.hpp"
 // classes dealing with exposing actual types, with many switches inside depending on template arguments
@@ -153,7 +151,8 @@ class VectorVisitor {
 		MatrixBaseVisitor<VectorT>().visit(cl);
 		cl
 		.def(py::init(&VectorVisitor::from_tuple))
-		.def("__getstate__",&VectorVisitor::__getstate__) // XXX: __setstate__
+		.def(py::init(&VectorVisitor::from_list))
+		.def(py::pickle(&VectorVisitor::__getstate__,&VectorVisitor::from_tuple))
 		.def("__setitem__",&VectorVisitor::set_item)
 		.def("__getitem__",&VectorVisitor::get_item)
 		.def("__str__",&VectorVisitor::__str__).def("__repr__",&VectorVisitor::__str__)
@@ -162,10 +161,14 @@ class VectorVisitor {
 		.def("asDiagonal",&VectorVisitor::asDiagonal,"Return diagonal matrix with this vector on the diagonal.")
 		;
 
+		py::implicitly_convertible<py::tuple,VectorT>();
+		py::implicitly_convertible<py::list,VectorT>();
+
 		visit_fixed_or_dynamic<VectorT,PyClass>(cl);
 
 		visit_special_sizes<VectorT,PyClass>(cl);
 	};
+	static VectorT from_list(py::list src){ return from_tuple(py::tuple(src)); }
 	static VectorT from_tuple(py::tuple src){
 		int len=py::len(src);
 		if(VectorT::RowsAtCompileTime!=Eigen::Dynamic){
@@ -333,7 +336,9 @@ class MatrixVisitor{
 		//std::cerr<<"MatrixVisitor: "<<MatrixBaseVisitor<MatrixT>::name(cl)<<std::endl;
 		MatrixBaseVisitor<MatrixT>().visit(cl);
 		cl
-		.def("__getstate__",&MatrixVisitor::__getstate__) // XXX: setstate
+		.def(py::init(&MatrixVisitor::from_tuple))
+		.def(py::init(&MatrixVisitor::from_list))
+		.def(py::pickle(&MatrixVisitor::__getstate__,&MatrixVisitor::from_tuple))
 		.def(py::init(&MatrixVisitor::fromDiagonal),py::arg("diag"))
 
 		.def("determinant",&MatrixT::determinant,"Return matrix determinant.")
@@ -354,9 +359,59 @@ class MatrixVisitor{
 		visit_fixed_or_dynamic<MatrixT,PyClass>(cl);
 		visit_special_sizes<MatrixT,PyClass>(cl);
 
-		//std::cerr<<"MatrixVisitor: "<<MatrixBaseVisitor<MatrixT>::name(cl)<<" DONE"<<std::endl;
+		py::implicitly_convertible<py::tuple,MatrixT>();
+		py::implicitly_convertible<py::list,MatrixT>();
 
+
+		//std::cerr<<"MatrixVisitor: "<<MatrixBaseVisitor<MatrixT>::name(cl)<<" DONE"<<std::endl;
 	}
+
+	static MatrixT from_list(py::list l){ return from_tuple(py::tuple(l)); }
+	static MatrixT from_tuple(py::tuple t){
+		int sz=py::len(t);
+		if(sz==0) throw py::value_error("unable to construct matrix from empty tuple.");
+		bool isFlat=!PySequence_Check(t[0].ptr());
+		// mixed static/dynamic not handled (also not needed)
+		static_assert(
+			(MatrixT::RowsAtCompileTime!=Eigen::Dynamic && MatrixT::ColsAtCompileTime!=Eigen::Dynamic)
+			||
+			(MatrixT::RowsAtCompileTime==Eigen::Dynamic && MatrixT::ColsAtCompileTime==Eigen::Dynamic)
+		);
+		if(MatrixT::RowsAtCompileTime!=Eigen::Dynamic){
+			if(isFlat){
+				// flat sequence (first item not sub-sequence), must contain exactly all items
+				if(sz!=MatrixT::RowsAtCompileTime*MatrixT::ColsAtCompileTime) throw py::value_error("tuple length "+std::to_string(sz)+" does not match number of matrix elements ("+std::to_string(MatrixT::RowsAtCompileTime)+"x"+std::to_string(MatrixT::ColsAtCompileTime)+"="+std::to_string(MatrixT::RowsAtCompileTime*MatrixT::ColsAtCompileTime)+")");
+				MatrixT ret;
+				for(int i=0; i<sz; i++){
+					ret(i/ret.rows(),i%ret.cols())=py::cast<Scalar>(t[i]);
+				}
+				return ret;
+			} else {
+				// contains nested sequences, one per row
+				if(sz!=MatrixT::RowsAtCompileTime) throw py::value_error("constructor must get "+std::to_string(MatrixT::RowsAtCompileTime)+" subtuples, one per row (not "+std::to_string(sz)+")");
+				MatrixT ret;
+				for(int i=0; i<sz; i++){
+					ret.row(i)=VectorVisitor<CompatVecX>::from_tuple(py::tuple(t[i]));
+				}
+				return ret;
+			}
+		} else {
+			// find the right size
+			// row vector
+			if(isFlat){ MatrixT ret(1,sz); ret.row(0)=VectorVisitor<CompatVecX>::from_tuple(t); return ret; }
+			else{ // find maximum size of items
+				std::vector<CompatVecX> rows(sz);
+				for(int i=0; i<sz; i++){ rows[i]=VectorVisitor<CompatVecX>::from_tuple(py::tuple(t[i])); }
+				std::set<Eigen::Index> ll; for(const auto r: rows) ll.insert(r.size());
+				if(ll.size()!=1) throw py::value_error("Sub-sequences must all have the same length when assigning dynamic-sized matrix.");
+				MatrixT ret;
+				ret.resize(sz,*ll.begin());
+				for(int i=0; i<sz; i++) ret.row(i)=rows[i];
+				return ret;
+			}
+		}
+	}
+
 	private:
 	// for dynamic matrices
 	template<typename MatrixT2, class PyClass> static void visit_fixed_or_dynamic(PyClass& cl, typename boost::enable_if_c<MatrixT2::RowsAtCompileTime==Eigen::Dynamic>::type* dummy = 0){
@@ -557,10 +612,10 @@ class AabbVisitor{
 		cl
 		.def(py::init<>())
 		.def(py::init(&AabbVisitor::from_tuple))
+		.def(py::init(&AabbVisitor::from_list))
 		.def(py::init<Box>(),py::arg("other"))
 		.def(py::init<VectorType,VectorType>(),py::arg("min"),py::arg("max"))
-		.def("__getstate__",[](const Box& b){ return py::make_tuple(b.min(),b.max()); })
-		// XXX: setstate
+		.def(py::pickle([](const Box& b){ return py::make_tuple(b.min(),b.max()); },&AabbVisitor::from_tuple))
 		.def("volume",&Box::volume)
 		.def("empty",&Box::isEmpty)
 		.def("center",&AabbVisitor::center)
@@ -587,8 +642,12 @@ class AabbVisitor{
 		.def("__setitem__",&AabbVisitor::set_minmax).def("__getitem__",&AabbVisitor::get_minmax)
 		.def("__str__",&AabbVisitor::__str__).def("__repr__",&AabbVisitor::__str__)
 		;
-	};
 
+		py::implicitly_convertible<py::tuple,Box>();
+		py::implicitly_convertible<py::list,Box>();
+	};
+	
+	static Box from_list(py::list l){ return from_tuple(py::tuple(l)); }
 	static Box from_tuple(py::tuple t){
 		if(py::len(t)!=2) throw py::type_error("Can only be constructed from a 2-tuple (not "+std::to_string(py::len(t))+"-tuple).");
 		return Box(py::cast<VectorType>(t[0]),py::cast<VectorType>(t[1]));
@@ -634,13 +693,14 @@ class QuaternionVisitor{
 	static void visit(PyClass& cl) {
 		cl
 		.def(py::init(&QuaternionVisitor::from_tuple))
+		.def(py::init(&QuaternionVisitor::from_list))
 		.def(py::init<>(&QuaternionVisitor::fromAxisAngle),py::arg("axis"),py::arg("angle"))
 		.def(py::init<>(&QuaternionVisitor::fromAngleAxis),py::arg("angle"),py::arg("axis"))
 		.def(py::init<>(&QuaternionVisitor::fromTwoVectors),py::arg("u"),py::arg("v"))
 		.def(py::init<Scalar,Scalar,Scalar,Scalar>(),py::arg("w"),py::arg("x"),py::arg("y"),py::arg("z"),"Initialize from coefficients.\n\n.. note:: The order of coefficients is *w*, *x*, *y*, *z*. The [] operator numbers them differently, 0...4 for *x* *y* *z* *w*!")
 		.def(py::init<CompatMat3>(),py::arg("rotMatrix")) //,"Initialize from given rotation matrix.")
 		.def(py::init<QuaternionT>(),py::arg("other"))
-		.def("__getstate__",[](const QuaternionT& q){ return py::make_tuple(q.w(),q.x(),q.y(),q.z()); })
+		.def(py::pickle([](const QuaternionT& q){ return py::make_tuple(q.w(),q.x(),q.y(),q.z()); },&QuaternionVisitor::from_tuple))
 		// properties
 		.def_property_readonly_static("Identity",&QuaternionVisitor::Identity)
 		// methods
@@ -659,8 +719,13 @@ class QuaternionVisitor{
 		.def("slerp",&QuaternionVisitor::slerp,py::arg("t"),py::arg("other"))
 		// .def("random",&QuaternionVisitor::random,"Assign random orientation to the quaternion.")
 		// operators
-		.def(py::self * py::self)
+#if 1
+		// the explicit one crashes just the same 
+		// copy to work around alignment issues...?
+		.def("__mul__",[](const QuaternionT& a, const QuaternionT& b){ QuaternionT a_(a); QuaternionT b_(b); return a_*b_; },py::is_operator())
+		// .def(py::self * py::self)
 		.def(py::self *= py::self)
+#endif
 		.def(py::self * CompatVec3())
 		.def("__eq__",&QuaternionVisitor::__eq__,py::is_operator()).def("__ne__",&QuaternionVisitor::__ne__,py::is_operator())
 		.def("__sub__",&QuaternionVisitor::__sub__,py::is_operator())
@@ -670,18 +735,27 @@ class QuaternionVisitor{
 		.def("__setitem__",&QuaternionVisitor::__setitem__).def("__getitem__",&QuaternionVisitor::__getitem__)
 		.def("__str__",&QuaternionVisitor::__str__).def("__repr__",&QuaternionVisitor::__str__)
 		;
+
+		py::implicitly_convertible<py::tuple,QuaternionT>();
+		py::implicitly_convertible<py::list,QuaternionT>();
+
 	}
-	static QuaternionT* from_tuple(py::tuple t){
-		std::cerr<<"ATTEMPTING CONSTRUCTION of QUATERNION from TUPLE."<<std::endl;
-		if(py::len(t)!=2) throw py::type_error("Can only be constructed from a 2-tuple (not "+std::to_string(py::len(t))+"-tuple)");
-		try{ return fromAngleAxis(py::cast<Scalar>(t[0]),py::cast<CompatVec3>(t[1])); } catch(...) {};
-		try{ return fromAngleAxis(py::cast<Scalar>(t[1]),py::cast<CompatVec3>(t[0])); } catch(...) {};
-		py::type_error("Tuple convertible to Quaternion must be (3-vector,scalar) or (scalar,3-vector).");
+	static QuaternionT from_list(py::list l){ return from_tuple(py::tuple(l)); }
+	static QuaternionT from_tuple(py::tuple t){
+		if(py::len(t)==2) {
+			try{ return fromAngleAxis(py::cast<Scalar>(t[0]),py::cast<CompatVec3>(t[1])); } catch(...) {};
+			try{ return fromAngleAxis(py::cast<Scalar>(t[1]),py::cast<CompatVec3>(t[0])); } catch(...) {};
+			py::type_error("2-tuple convertible to Quaternion must be (3-vector,scalar) or (scalar,3-vector).");
+		}
+		if(py::len(t)==4){
+			return QuaternionT(py::cast<Scalar>(t[0]),py::cast<Scalar>(t[1]),py::cast<Scalar>(t[2]),py::cast<Scalar>(t[3]));
+		}
+		throw py::type_error("Can only be constructed from axis-angle 2-tuple, angle-axis 2-tuple or w,x,y,z 4-tuple (not "+std::to_string(py::len(t))+"-tuple)");
 	}
 	private:
-	static QuaternionT* fromAxisAngle(const CompatVec3& axis, const Scalar& angle){ QuaternionT* ret=new QuaternionT(AngleAxisT(angle,axis)); ret->normalize();  return ret; }
-	static QuaternionT* fromAngleAxis(const Scalar& angle, const CompatVec3& axis){ QuaternionT* ret=new QuaternionT(AngleAxisT(angle,axis)); ret->normalize(); return ret; }
-	static QuaternionT* fromTwoVectors(const CompatVec3& u, const CompatVec3& v){ QuaternionT* q(new QuaternionT); q->setFromTwoVectors(u,v); return q; }
+	static QuaternionT fromAxisAngle(const CompatVec3& axis, const Scalar& angle){ return QuaternionT(AngleAxisT(angle,axis)).normalized(); /* QuaternionT ret=new QuaternionT(AngleAxisT(angle,axis)); ret->normalize();  return ret; */ }
+	static QuaternionT fromAngleAxis(const Scalar& angle, const CompatVec3& axis){ return QuaternionT(AngleAxisT(angle,axis)).normalized(); /*QuaternionT ret=new QuaternionT(AngleAxisT(angle,axis)); ret->normalize(); return ret; */ }
+	static QuaternionT fromTwoVectors(const CompatVec3& u, const CompatVec3& v){ return QuaternionT::FromTwoVectors(u,v); }
 
 	// those must be wrapped since "other" is declared as QuaternionBase<OtherDerived>; the type is then not inferred when using .def
 	static QuaternionT slerp(const QuaternionT& self, const Real& t, const QuaternionT& other){ return self.slerp(t,other); }

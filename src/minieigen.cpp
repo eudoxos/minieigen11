@@ -14,8 +14,6 @@ The code is split to live in several files to reduce the amount of RAM necessary
 #include"common.hpp"
 #include"expose.hpp"
 
-#include"casters.hpp"
-
 PYBIND11_MODULE(_minieigen11,mod){
 	mod.attr("__doc__")="minieigen11 is wrapper for a small part of the `Eigen <http://eigen.tuxfamily.org>`_ library via pybind11. Refer to its documentation for details. All classes in this module support pickling.";
 
@@ -28,6 +26,8 @@ PYBIND11_MODULE(_minieigen11,mod){
 	expose_complex(mod);
 
 	mod.def("float2str",&doubleToShortest,py::arg("f"),py::arg("pad")=0,"Return the shortest string representation of *f* which will is equal to *f* when converted back to float. This function is only useful in Python prior to 3.0; starting from that version, standard string conversion does just that.");
+
+	mod.attr("_pybind11_based_")=true;
 };
 
 
