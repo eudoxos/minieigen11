@@ -632,8 +632,7 @@ class AabbVisitor{
 		.def("intersection",&Box::intersection)
 		.def("merged",&Box::merged)
 		// those return internal references, which is what we want
-		// XXX: test this!!
-		// XXX: return_value_policy::reference_internal should be default
+		// return_value_policy::reference_internal is the default for def_property
 		.def_property("min",&AabbVisitor::min,&AabbVisitor::setMin)
 		.def_property("max",&AabbVisitor::max,&AabbVisitor::setMax)
 
