@@ -14,7 +14,7 @@ The code is split to live in several files to reduce the amount of RAM necessary
 #include"common.hpp"
 #include"expose.hpp"
 
-PYBIND11_MODULE(_minieigen11,mod){
+PYBIND11_MODULE(minieigen11,mod){
 	mod.attr("__doc__")="minieigen11 is wrapper for a small part of the `Eigen <http://eigen.tuxfamily.org>`_ library via pybind11. Refer to its documentation for details. All classes in this module support pickling.";
 
 	py::options options; options.disable_function_signatures();

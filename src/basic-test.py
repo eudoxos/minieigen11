@@ -1,6 +1,7 @@
 import sys,math
-sys.path+=['../build']
-from _minieigen11 import *
+sys.path+=['../lib.linux-x86_64-3.6']
+# sys.path+=['../dist']
+from minieigen11 import *
 print(Vector3(0,0,0)==Vector3.Zero)
 print(Vector3(0,0,0)!=Vector3.Zero)
 print(Vector3(0,0,0)!=Vector3(0,0,0))
@@ -54,7 +55,7 @@ q2=Quaternion((1,0,0),math.pi/2)
 for t in (0,.5,1): print(q.slerp(t,q2))
 # print(q2*q)
 
-print(Vector3(1,2,3).isApprox((1,2,3.000000001)),Vector3(1,2,3).isApprox((1,2,3.1),prec=.2))
+print('Should be False, True:',Vector3(1,2,3).isApprox((1,2,3.000000001)),Vector3(1,2,3).isApprox((1,2,3.1),prec=.2))
 
 v=Vector3(-1,2,4)
 print(v.maxCoeff(), v.minCoeff(), v.prod(), v.mean(), v.sum())

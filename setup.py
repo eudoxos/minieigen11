@@ -58,8 +58,8 @@ setup(name='minieigen11',
     version='0.6.0',
     author='Václav Šmilauer',
     author_email='eu@doxos.eu',
-    url='https://github.com/eudoxos/minieigen',
-    description='Wrap parts of Eigen3, c++ library for basic math and geometry.',
+    url='https://github.com/eudoxos/minieigen11',
+    description='Wrap parts of Eigen3 (c++ library for basic math and geometry) using pybind11.',
     classifiers=[
         'License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)',
         'Programming Language :: Python',
@@ -70,6 +70,6 @@ setup(name='minieigen11',
         'Development Status :: 5 - Production/Stable'
     ],
     ext_modules=[CMakeExtension('minieigen11')],
-    cmdclass=dict(build_Ext=CMakeBuild)
+    cmdclass=dict(build_ext=CMakeBuild)
 )
 
